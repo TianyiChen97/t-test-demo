@@ -108,9 +108,21 @@
 <div style="text-align:center; font-size:13px; margin-bottom:12px; color:#666;">Let's run a two-sample t-test (equal variances assumed).</div>
 <canvas class="boxCanvas" id="boxCanvas"></canvas>
 
-<div class="formula" id="formulaD"></div>
-<div class="formula" id="formulaT"></div>
-<canvas class="nullCanvas" id="nullCanvas" style="display:none;"></canvas>
+<div style="text-align:center; margin-bottom:16px;">
+  <button id="showDBtn" style="display:none;">Show Cohen's d (effect size)</button>
+  <div id="revealD" style="display:none;">
+    <div class="formula" id="formulaD"></div>
+  </div>
+</div>
+
+<div style="text-align:center; margin-bottom:16px;">
+  <button id="showTBtn" style="display:none;">Show t-statistic & distribution</button>
+  <div id="revealT" style="display:none;">
+    <div class="formula" id="formulaT"></div>
+    <canvas class="nullCanvas" id="nullCanvas" style="display:none;"></canvas>
+  </div>
+</div>
+
 <div style="text-align:center; margin-bottom:16px;">
   <button id="showPBtn" style="display:none;">Show p-value</button>
   <div class="result" id="resultP" style="display:none;"></div>
@@ -683,12 +695,34 @@ $('drawBtn').onclick = () => {
     ' = <span class="frac"><span class="frac-num">' + d.toFixed(3) + '</span>' +
     '<span class="frac-den">√(2/' + res.n1 + ')</span></span>' +
     ' = ' + res.t.toFixed(3);
-  drawNullDist(res.t, res.df);
   const sigClass = res.p < 0.05 ? ' sig' : '';
   $('resultP').innerHTML = '<span class="pval' + sigClass + '">p = ' + res.p.toFixed(4) + '</span>';
+
+  // hide all reveals
+  $('revealD').style.display = 'none';
+  $('revealT').style.display = 'none';
+  $('nullCanvas').style.display = 'none';
   $('resultP').style.display = 'none';
-  $('showPBtn').style.display = 'inline-block';
-  $('showPBtn').onclick = () => { $('resultP').style.display = 'block'; $('showPBtn').style.display = 'none'; };
+  $('showTBtn').style.display = 'none';
+  $('showPBtn').style.display = 'none';
+
+  // show first button
+  $('showDBtn').style.display = 'inline-block';
+  $('showDBtn').onclick = () => {
+    $('revealD').style.display = 'block';
+    $('showDBtn').style.display = 'none';
+    $('showTBtn').style.display = 'inline-block';
+  };
+  $('showTBtn').onclick = () => {
+    $('revealT').style.display = 'block';
+    $('showTBtn').style.display = 'none';
+    drawNullDist(res.t, res.df);
+    $('showPBtn').style.display = 'inline-block';
+  };
+  $('showPBtn').onclick = () => {
+    $('resultP').style.display = 'block';
+    $('showPBtn').style.display = 'none';
+  };
   pvals.push(res.p);
   drawHistory();
 };
@@ -696,10 +730,12 @@ $('drawBtn').onclick = () => {
 $('clearBtn').onclick = () => {
   pvals = [];
   drawHistory();
-  $('formulaD').innerHTML = '';
-  $('formulaT').innerHTML = '';
+  $('formulaD').innerHTML = ''; $('formulaT').innerHTML = '';
+  $('revealD').style.display = 'none'; $('revealT').style.display = 'none';
   $('nullCanvas').style.display = 'none';
   $('resultP').innerHTML = ''; $('resultP').style.display = 'none';
+  $('showDBtn').style.display = 'none';
+  $('showTBtn').style.display = 'none';
   $('showPBtn').style.display = 'none';
   const cv = $('boxCanvas'); const bctx = cv.getContext('2d'); bctx.clearRect(0, 0, cv.width, cv.height);
 };
