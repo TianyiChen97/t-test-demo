@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>P-Value Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Menlo', 'Consolas', monospace; background: #fafafa; color: #222; padding: 24px; max-width: 720px; margin: 0 auto; font-size: 13px; }
+  .row { display: flex; gap: 32px; margin-bottom: 16px; }
+  .dist { flex: 1; }
+  .dist label { display: block; margin-bottom: 4px; }
+  .dist input[type=range] { width: 100%; }
+  .val { float: right; font-weight: bold; }
+  .controls { margin-bottom: 16px; }
+  button { font-family: inherit; font-size: 13px; padding: 6px 14px; cursor: pointer; border: 1px solid #222; background: #fff; margin-right: 8px; }
+  button:hover { background: #222; color: #fff; }
+  .result { margin-bottom: 16px; font-size: 24px; min-height: 40px; line-height: 1.6; text-align: center; }
+  .formula { font-size: 16px; text-align: center; margin-bottom: 12px; line-height: 2; }
+  .formula .frac { display: inline-block; text-align: center; vertical-align: middle; }
+  .formula .frac-num { display: block; border-bottom: 1.5px solid #222; padding: 0 4px 2px; }
+  .formula .frac-den { display: block; padding: 2px 4px 0; }
+  .result .pval { font-weight: bold; }
+  .result .sig { color: #c00; }
+  .count { font-size: 12px; color: #666; margin-bottom: 8px; }
+  canvas.boxCanvas { width: 100%; height: 120px; display: block; margin-bottom: 16px; }
+  canvas.nullCanvas { width: 100%; height: 150px; display: block; margin-bottom: 12px; }
+
+  .hist-section { display: flex; gap: 16px; margin-top: 8px; }
+  .pval-list { flex: 0 0 140px; max-height: 200px; overflow-y: auto; border: 1px solid #ccc; background: #fff; padding: 4px 8px; font-size: 11px; line-height: 1.8; }
+  .pval-list .sig { color: #c00; font-weight: bold; }
+  canvas.histCanvas { flex: 1; height: 200px; border: 1px solid #ccc; background: #fff; }
+  canvas.theoCanvas { width: 100%; height: 200px; display: block; border: 1px solid #ccc; background: #fff; }
+  .theo-section { margin-top: 24px; }
+  .theo-label { font-size: 12px; color: #666; margin-bottom: 6px; }
+  .truth-wrapper { position: relative; padding: 30px 40px 35px 40px; margin: 0 -40px; overflow: hidden; }
+  .cloud-cover {
+    position: absolute; inset: 0; z-index: 10;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; user-select: none;
+    transition: opacity 0.5s ease;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.12));
+  }
+  .cloud-cover svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .cloud-cover span { position: relative; z-index: 1; font-size: 16px; color: #7a8a9e; pointer-events: none; letter-spacing: 0.5px; }
+  .cloud-cover.hidden { opacity: 0; pointer-events: none; }
+  #cloudToggle { margin-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<button id="cloudToggle" onclick="toggleCloud()">Hide Truth</button>
+
+<div class="truth-wrapper" id="truthWrapper">
+  <div class="cloud-cover hidden" id="cloudCover" onclick="toggleCloud()">
+    <svg viewBox="0 0 720 200" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="cloudGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#f0f4f8"/>
+          <stop offset="100%" stop-color="#d5dde8"/>
+        </linearGradient>
+      </defs>
+      <path d="
+        M 80,170
+        Q 10,170 10,130
+        Q 10,95 45,85
+        Q 35,50 75,35
+        Q 110,18 150,35
+        Q 170,10 220,8
+        Q 275,5 300,30
+        Q 330,5 390,3
+        Q 450,0 480,25
+        Q 510,5 560,10
+        Q 610,15 630,40
+        Q 670,30 690,55
+        Q 715,75 710,110
+        Q 715,155 670,170
+        Z
+      " fill="url(#cloudGrad)" stroke="#c0c8d4" stroke-width="1.5"/>
+    </svg>
+    <span>Click to reveal truth</span>
+  </div>
+
+  <div class="row">
+    <div class="dist">
+      <strong>X₁ ~ Normal</strong>
+      <label>μ₁ <span class="val" id="m1v">0</span></label>
+      <input type="range" id="m1" min="-3" max="3" step="0.1" value="0">
+      <label>σ₁ <span class="val" id="s1v">1</span></label>
+      <input type="range" id="s1" min="0.1" max="5" step="0.1" value="1">
+    </div>
+    <div class="dist">
+      <strong>X₂ ~ Normal</strong>
+      <label>μ₂ <span class="val" id="m2v">0</span></label>
+      <input type="range" id="m2" min="-3" max="3" step="0.1" value="0">
+      <label>σ₂ <span class="val" id="s2v">1</span></label>
+      <input type="range" id="s2" min="0.1" max="5" step="0.1" value="1">
+    </div>
+  </div>
+
+  <div id="h0status" style="text-align:center; font-size:15px; margin-bottom:4px; font-weight:bold;"></div>
+</div>
+
+<div class="controls">
+  <label>n (per group) <span class="val" id="nv">30</span></label>
+  <input type="range" id="nn" min="6" max="120" step="3" value="30" style="width:100%;">
+</div>
+<div style="text-align:center; font-size:13px; margin-bottom:12px; color:#666;">Let's run a two-sample t-test (equal variances assumed).</div>
+<canvas class="boxCanvas" id="boxCanvas"></canvas>
+
+<div class="formula" id="formulaD"></div>
+<div class="formula" id="formulaT"></div>
+<canvas class="nullCanvas" id="nullCanvas" style="display:none;"></canvas>
+<div style="text-align:center; margin-bottom:16px;">
+  <button id="showPBtn" style="display:none;">Show p-value</button>
+  <div class="result" id="resultP" style="display:none;"></div>
+</div>
+
+<div>
+  <button id="drawBtn">Draw Sample</button>
+  <button id="clearBtn">Clear History</button>
+</div>
+<br>
+
+<div class="count" id="countInfo"></div>
+<div class="hist-section">
+  <div class="pval-list" id="pvalList"></div>
+  <canvas class="histCanvas" id="histCanvas"></canvas>
+</div>
+
+<div class="theo-section">
+  <div class="theo-label" id="theoLabel"></div>
+  <canvas class="theoCanvas" id="theoCanvas"></canvas>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// --- cloud toggle ---
+let truthHidden = false;
+function toggleCloud() {
+  truthHidden = !truthHidden;
+  $('cloudCover').classList.toggle('hidden', !truthHidden);
+  $('cloudToggle').textContent = truthHidden ? 'Show Truth' : 'Hide Truth';
+  drawTheoretical();
+}
+
+// --- sliders ---
+function updateH0() {
+  const same = $('m1').value === $('m2').value;
+  $('h0status').textContent = same ? 'H₀: μ₁ = μ₂ is TRUE' : 'H₀: μ₁ = μ₂ is FALSE';
+  $('h0status').style.color = same ? '#080' : '#c00';
+}
+for (const [slider, label] of [['m1','m1v'],['m2','m2v'],['s1','s1v'],['s2','s2v'],['nn','nv']]) {
+  $(slider).oninput = () => { $(label).textContent = $(slider).value; updateH0(); scheduleTheo(); };
+}
+updateH0();
+
+let theoTimer = null;
+function scheduleTheo() { clearTimeout(theoTimer); theoTimer = setTimeout(drawTheoretical, 300); }
+
+// --- normal RNG (Box-Muller) ---
+function rnorm(mu, sigma) {
+  let u1 = Math.random(), u2 = Math.random();
+  return mu + sigma * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+}
+
+// --- t-distribution CDF via regularized incomplete beta ---
+function tCDF(t, df) {
+  if (df > 100) return normalCDF(t); // |t| always positive when called
+  const x = df / (df + t * t);
+  return 1 - 0.5 * regBetaI(df / 2, 0.5, x);
+}
+function regBetaI(a, b, x) {
+  if (x < 0 || x > 1) return 0;
+  if (x === 0) return 0;
+  if (x === 1) return 1;
+  if (x > (a + 1) / (a + b + 2)) {
+    return 1 - regBetaI(b, a, 1 - x);
+  }
+  const lbeta = lgamma(a) + lgamma(b) - lgamma(a + b);
+  const front = Math.exp(Math.log(x) * a + Math.log(1 - x) * b - lbeta) / a;
+  // Lentz
+  let f = 1e-30, C = 1e-30, D = 0;
+  for (let m = 0; m <= 1000; m++) {
+    let num;
+    if (m === 0) { num = 1; }
+    else {
+      const k = m;
+      if (k % 2 === 0) {
+        const mm = k / 2;
+        num = (mm * (b - mm) * x) / ((a + 2 * mm - 1) * (a + 2 * mm));
+      } else {
+        const mm = (k - 1) / 2;
+        num = -((a + mm) * (a + b + mm) * x) / ((a + 2 * mm) * (a + 2 * mm + 1));
+      }
+    }
+    D = 1 + num * D; if (Math.abs(D) < 1e-30) D = 1e-30; D = 1 / D;
+    C = 1 + num / C; if (Math.abs(C) < 1e-30) C = 1e-30;
+    f *= D * C;
+    if (Math.abs(D * C - 1) < 1e-14) break;
+  }
+  let result = front * f;
+  return Math.min(Math.max(result, 0), 1);
+}
+function lgamma(x) {
+  const c = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+    -1.231739572450155, 0.001208650973866179, -0.000005395239384953];
+  let y = x, tmp = x + 5.5;
+  tmp -= (x + 0.5) * Math.log(tmp);
+  let ser = 1.000000000190015;
+  for (let j = 0; j < 6; j++) ser += c[j] / ++y;
+  return -tmp + Math.log(2.5066282746310005 * ser / x);
+}
+
+function pooledT(x1, x2) {
+  const n1 = x1.length, n2 = x2.length;
+  const m1 = x1.reduce((a, b) => a + b) / n1;
+  const m2 = x2.reduce((a, b) => a + b) / n2;
+  const ss1 = x1.reduce((a, b) => a + (b - m1) ** 2, 0);
+  const ss2 = x2.reduce((a, b) => a + (b - m2) ** 2, 0);
+  const sp2 = (ss1 + ss2) / (n1 + n2 - 2); // pooled variance
+  const sp = Math.sqrt(sp2);
+  const se = sp * Math.sqrt(1 / n1 + 1 / n2);
+  const t = (m1 - m2) / se;
+  const df = n1 + n2 - 2;
+  const p = 2 * (1 - tCDF(Math.abs(t), df));
+  return { t, df, p, m1, m2, sp, se, n1, n2 };
+}
+
+// --- history ---
+let pvals = [];
+
+// --- box plot ---
+function drawBoxPlot(x1, x2) {
+  const cv = $('boxCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const bctx = cv.getContext('2d');
+  bctx.scale(dpr, dpr);
+  bctx.clearRect(0, 0, w, h);
+
+  const all = [...x1, ...x2];
+  const lo = Math.min(...all), hi = Math.max(...all);
+  const pad = (hi - lo) * 0.1 || 1;
+  const xmin = lo - pad, xmax = hi + pad;
+  const map = v => 40 + (v - xmin) / (xmax - xmin) * (w - 60);
+
+  function quartiles(arr) {
+    const s = [...arr].sort((a, b) => a - b);
+    const q = p => { const i = p * (s.length - 1); const fl = Math.floor(i); return s[fl] + (s[fl + 1] - s[fl] || 0) * (i - fl); };
+    return { min: s[0], q1: q(0.25), med: q(0.5), q3: q(0.75), max: s[s.length - 1] };
+  }
+
+  function drawOne(arr, cy, color) {
+    const q = quartiles(arr);
+    const iqr = q.q3 - q.q1;
+    const wLo = Math.max(q.min, q.q1 - 1.5 * iqr);
+    const wHi = Math.min(q.max, q.q3 + 1.5 * iqr);
+    const bh = 24;
+
+    bctx.strokeStyle = color; bctx.fillStyle = color; bctx.lineWidth = 1.5;
+    // whiskers
+    bctx.beginPath(); bctx.moveTo(map(wLo), cy); bctx.lineTo(map(q.q1), cy); bctx.stroke();
+    bctx.beginPath(); bctx.moveTo(map(q.q3), cy); bctx.lineTo(map(wHi), cy); bctx.stroke();
+    // whisker caps
+    bctx.beginPath(); bctx.moveTo(map(wLo), cy - bh / 3); bctx.lineTo(map(wLo), cy + bh / 3); bctx.stroke();
+    bctx.beginPath(); bctx.moveTo(map(wHi), cy - bh / 3); bctx.lineTo(map(wHi), cy + bh / 3); bctx.stroke();
+    // box
+    bctx.globalAlpha = 0.15; bctx.fillRect(map(q.q1), cy - bh / 2, map(q.q3) - map(q.q1), bh);
+    bctx.globalAlpha = 1; bctx.strokeRect(map(q.q1), cy - bh / 2, map(q.q3) - map(q.q1), bh);
+    // median
+    bctx.lineWidth = 2.5;
+    bctx.beginPath(); bctx.moveTo(map(q.med), cy - bh / 2); bctx.lineTo(map(q.med), cy + bh / 2); bctx.stroke();
+    // all data points (jittered)
+    bctx.lineWidth = 1; bctx.globalAlpha = 0.7; bctx.fillStyle = color;
+    arr.forEach(v => {
+      const jy = cy + (Math.random() - 0.5) * bh * 0.8;
+      bctx.beginPath(); bctx.arc(map(v), jy, 3.5, 0, 7); bctx.fill();
+    });
+    bctx.globalAlpha = 1;
+    // label
+    bctx.font = '15px Menlo, monospace'; bctx.textAlign = 'right'; bctx.fillStyle = color;
+    bctx.fillText(color === '#2266cc' ? 'X₁' : 'X₂', 30, cy + 5);
+  }
+
+  drawOne(x1, h * 0.33, '#2266cc');
+  drawOne(x2, h * 0.67, '#cc6622');
+}
+
+// --- null distribution plot ---
+function tPDF(t, df) {
+  return Math.exp(lgamma((df + 1) / 2) - lgamma(df / 2) - 0.5 * Math.log(df * Math.PI) - ((df + 1) / 2) * Math.log(1 + t * t / df));
+}
+
+function drawNullDist(tObs, df) {
+  const cv = $('nullCanvas');
+  cv.style.display = 'block';
+  const dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const ctx = cv.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  const pad = { l: 20, r: 20, t: 10, b: 30 };
+  const pw = w - pad.l - pad.r, ph = h - pad.t - pad.b;
+
+  // range: show at least ±4, but extend to cover |tObs| + 1
+  const xMax = Math.max(4, Math.abs(tObs) + 1);
+  const xMin = -xMax;
+  const mapX = v => pad.l + (v - xMin) / (xMax - xMin) * pw;
+  const nPts = 400;
+
+  // compute PDF values
+  const pts = [];
+  let yMax = 0;
+  for (let i = 0; i <= nPts; i++) {
+    const x = xMin + (xMax - xMin) * i / nPts;
+    const y = tPDF(x, df);
+    pts.push({ x, y });
+    if (y > yMax) yMax = y;
+  }
+  const mapY = v => pad.t + ph - (v / (yMax * 1.08)) * ph;
+
+  // shade tail areas (|t| >= |tObs|)
+  const absT = Math.abs(tObs);
+  ctx.fillStyle = 'rgba(204, 0, 0, 0.25)';
+  // left tail
+  ctx.beginPath();
+  ctx.moveTo(mapX(xMin), mapY(0));
+  for (const p of pts) { if (p.x <= -absT) ctx.lineTo(mapX(p.x), mapY(p.y)); }
+  ctx.lineTo(mapX(-absT), mapY(0));
+  ctx.closePath(); ctx.fill();
+  // right tail
+  ctx.beginPath();
+  ctx.moveTo(mapX(absT), mapY(0));
+  for (const p of pts) { if (p.x >= absT) ctx.lineTo(mapX(p.x), mapY(p.y)); }
+  ctx.lineTo(mapX(xMax), mapY(0));
+  ctx.closePath(); ctx.fill();
+
+  // draw PDF curve
+  ctx.strokeStyle = '#222'; ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  pts.forEach((p, i) => { const fn = i === 0 ? 'moveTo' : 'lineTo'; ctx[fn](mapX(p.x), mapY(p.y)); });
+  ctx.stroke();
+
+  // x-axis
+  ctx.strokeStyle = '#999'; ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, mapY(0)); ctx.lineTo(pad.l + pw, mapY(0)); ctx.stroke();
+
+  // axis label
+  ctx.fillStyle = '#222'; ctx.font = '11px Menlo, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('0', mapX(0), mapY(0) + 14);
+
+  // label: null distribution
+  ctx.fillStyle = '#666'; ctx.font = '11px Menlo, monospace'; ctx.textAlign = 'left';
+  ctx.fillText('t(' + df + ') null distribution', pad.l, pad.t + 12);
+
+  // shaded area label
+  ctx.fillStyle = '#c00'; ctx.textAlign = 'right';
+  ctx.fillText('shaded = p-value', pad.l + pw, pad.t + 12);
+}
+
+// --- p-value history ---
+function drawHistory() {
+  const nSig = pvals.filter(p => p < 0.05).length;
+  $('countInfo').textContent = pvals.length + ' draws | ' +
+    nSig + ' with p < 0.05 (' +
+    (pvals.length ? (100 * nSig / pvals.length).toFixed(1) : '0') + '%)';
+
+  // --- list ---
+  const list = $('pvalList');
+  list.innerHTML = '';
+  pvals.forEach((p, i) => {
+    const span = document.createElement('div');
+    span.textContent = (i + 1) + '. ' + p.toFixed(4);
+    if (p < 0.05) span.className = 'sig';
+    list.appendChild(span);
+  });
+  list.scrollTop = list.scrollHeight;
+
+  // --- histogram ---
+  const hc = $('histCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const hw = hc.clientWidth, hh = hc.clientHeight;
+  hc.width = hw * dpr; hc.height = hh * dpr;
+  const hctx = hc.getContext('2d');
+  hctx.scale(dpr, dpr);
+  hctx.clearRect(0, 0, hw, hh);
+
+  if (pvals.length === 0) return;
+
+  const nBins = 20;
+  const bins = new Array(nBins).fill(0);
+  pvals.forEach(p => { const b = Math.min(Math.floor(p * nBins), nBins - 1); bins[b]++; });
+  const maxBin = Math.max(...bins, 1);
+
+  const pad = { l: 28, r: 8, t: 8, b: 20 };
+  const pw = hw - pad.l - pad.r, ph = hh - pad.t - pad.b;
+  const barW = pw / nBins;
+
+  bins.forEach((count, i) => {
+    const barH = (count / maxBin) * ph;
+    const x = pad.l + i * barW;
+    const y = pad.t + ph - barH;
+    hctx.fillStyle = (i < nBins * 0.05) ? '#c00' : '#888';
+    hctx.globalAlpha = 0.7;
+    hctx.fillRect(x + 1, y, barW - 2, barH);
+  });
+  hctx.globalAlpha = 1;
+
+  // 0.05 line
+  const lineX = pad.l + 0.05 * pw;
+  hctx.strokeStyle = '#c00'; hctx.lineWidth = 1.5; hctx.setLineDash([4, 3]);
+  hctx.beginPath(); hctx.moveTo(lineX, pad.t); hctx.lineTo(lineX, pad.t + ph); hctx.stroke();
+  hctx.setLineDash([]);
+
+  // axis labels
+  hctx.fillStyle = '#999'; hctx.font = '10px Menlo, monospace'; hctx.textAlign = 'center';
+  hctx.fillText('0', pad.l, hh - 4);
+  hctx.fillText('0.5', pad.l + pw / 2, hh - 4);
+  hctx.fillText('1', pad.l + pw, hh - 4);
+
+  // y axis
+  hctx.textAlign = 'right';
+  hctx.fillText(maxBin, pad.l - 4, pad.t + 10);
+  hctx.fillText('0', pad.l - 4, pad.t + ph + 4);
+}
+
+// --- standard normal PDF & CDF ---
+function normalPDF(z) {
+  return Math.exp(-0.5 * z * z) / Math.sqrt(2 * Math.PI);
+}
+function normalCDF(z) {
+  if (z < -8) return 0; if (z > 8) return 1;
+  const a = [0.254829592, -0.284496736, 1.421413741, -1.453152027, 1.061405429];
+  const p = 0.3275911, sign = z < 0 ? -1 : 1;
+  const x = Math.abs(z) / Math.SQRT2; // erfc argument
+  const tt = 1 / (1 + p * x);
+  const y = 1 - ((((a[4]*tt+a[3])*tt+a[2])*tt+a[1])*tt+a[0]) * tt * Math.exp(-x*x);
+  return 0.5 * (1 + sign * y);
+}
+// normal quantile (Beasley-Springer-Moro)
+function normalQuantile(p) {
+  if (p <= 0) return -Infinity; if (p >= 1) return Infinity;
+  if (Math.abs(p - 0.5) < 1e-14) return 0;
+  const a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2,
+    1.383577518672690e2, -3.066479806614716e1, 2.506628277459239e0];
+  const b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2,
+    6.680131188771972e1, -1.328068155288572e1];
+  const c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838e0,
+    -2.549732539343734e0, 4.374664141464968e0, 2.938163982698783e0];
+  const d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996e0, 3.754408661907416e0];
+  const pLow = 0.02425, pHigh = 1 - pLow;
+  let q, r;
+  if (p < pLow) {
+    q = Math.sqrt(-2 * Math.log(p));
+    return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+           ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  } else if (p <= pHigh) {
+    q = p - 0.5; r = q * q;
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q /
+           (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
+  } else {
+    q = Math.sqrt(-2 * Math.log(1 - p));
+    return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) /
+            ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1);
+  }
+}
+
+// --- proper CDF for central t (handles negative t) ---
+function tCDFfull(t, df) {
+  if (df > 100) return normalCDF(t); // normal approx for large df
+  const x = df / (df + t * t);
+  const half = 0.5 * regBetaI(df / 2, 0.5, x);
+  return t >= 0 ? 1 - half : half;
+}
+
+// --- central t quantile ---
+function tQuantile(p, df) {
+  if (df > 100) return normalQuantile(p); // normal approx for large df
+  if (Math.abs(p - 0.5) < 1e-12) return 0;
+  let lo = -40, hi = 40;
+  for (let i = 0; i < 80; i++) {
+    const mid = (lo + hi) / 2;
+    if (tCDFfull(mid, df) < p) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+// --- noncentral t PDF via numerical integration ---
+// T = (Z + δ) / √(V/ν), integrate over V ~ χ²(ν)
+function nctPDF(t, df, delta) {
+  if (Math.abs(delta) < 1e-12) return df > 100 ? normalPDF(t) : tPDF(t, df);
+  if (df > 100) {
+    // normal approx: T ≈ N(δ, 1) for large df
+    return normalPDF(t - delta);
+  }
+  const hi = df + 7 * Math.sqrt(2 * df);
+  const lo = Math.max(0.01, df - 7 * Math.sqrt(2 * df));
+  const nSteps = 300;
+  const dv = (hi - lo) / nSteps;
+  let sum = 0;
+  for (let i = 0; i <= nSteps; i++) {
+    const v = lo + i * dv;
+    const s = Math.sqrt(v / df);
+    const z = t * s - delta;
+    const logPhi = -0.5 * z * z - 0.5 * Math.log(2 * Math.PI);
+    const logChi2 = (df / 2 - 1) * Math.log(v) - v / 2 - (df / 2) * Math.log(2) - lgamma(df / 2);
+    const val = s * Math.exp(logPhi + logChi2);
+    const w = (i === 0 || i === nSteps) ? 0.5 : 1;
+    sum += w * val * dv;
+  }
+  return sum;
+}
+
+// --- noncentral t CDF ---
+function nctCDF(t, df, delta) {
+  if (Math.abs(delta) < 1e-12) return tCDFfull(t, df);
+  if (df > 100) {
+    // normal approx: T ≈ N(δ, 1) for large df
+    return normalCDF(t - delta);
+  }
+  const hi = df + 7 * Math.sqrt(2 * df);
+  const lo = Math.max(0.01, df - 7 * Math.sqrt(2 * df));
+  const nSteps = 300;
+  const dv = (hi - lo) / nSteps;
+  let sum = 0;
+  for (let i = 0; i <= nSteps; i++) {
+    const v = lo + i * dv;
+    const s = Math.sqrt(v / df);
+    const z = t * s - delta;
+    const cdf = normalCDF(z);
+    const logChi2 = (df/2-1)*Math.log(v) - v/2 - (df/2)*Math.log(2) - lgamma(df/2);
+    const w = (i === 0 || i === nSteps) ? 0.5 : 1;
+    sum += w * cdf * Math.exp(logChi2) * dv;
+  }
+  return Math.min(Math.max(sum, 0), 1);
+}
+
+// --- p-value density via change of variables ---
+// f_P(p) = [f_{nct}(tc) + f_{nct}(-tc)] / [2 · f_central(tc)]
+// where tc = Q_central(1 - p/2)
+function pvalDensity(p, df, delta) {
+  if (p <= 1e-6 || p >= 1 - 1e-6) return Math.abs(delta) < 0.001 ? 1 : 0;
+  const tc = tQuantile(1 - p / 2, df);
+  const fCentral = df > 100 ? normalPDF(tc) : tPDF(tc, df);
+  const fNum = nctPDF(tc, df, delta) + nctPDF(-tc, df, delta);
+  const fDen = 2 * fCentral;
+  if (fDen < 1e-30) return 0;
+  return fNum / fDen;
+}
+
+// --- theoretical p-value density plot ---
+function drawTheoretical() {
+  const mu1 = +$('m1').value, mu2 = +$('m2').value;
+  const sig1 = +$('s1').value, sig2 = +$('s2').value;
+  const n = +$('nn').value;
+  const df = 2 * n - 2;
+  const sigEq = Math.abs(sig1 - sig2) < 0.001;
+  const sigPool = Math.sqrt((sig1 * sig1 + sig2 * sig2) / 2);
+  const delta = (mu1 - mu2) / (sigPool * Math.sqrt(2 / n));
+
+  // compute power/type I directly from noncentral t CDF
+  const tc05 = tQuantile(0.975, df);
+  const rejProb = 1 - nctCDF(tc05, df, delta) + nctCDF(-tc05, df, delta);
+
+  const same = Math.abs(mu1 - mu2) < 0.001;
+  if (truthHidden) {
+    $('theoLabel').textContent = 'Theoretical density of p-value — (truth hidden)';
+  } else {
+    $('theoLabel').textContent = 'Theoretical density of p-value' +
+      (sigEq ? '' : ' (approx: σ₁ ≠ σ₂)') +
+      (Math.abs(delta) < 0.001 ? ' — δ = 0, Unif(0,1)' : ' — δ = ' + delta.toFixed(2));
+  }
+
+  const hc = $('theoCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const hw = hc.clientWidth, hh = hc.clientHeight;
+  hc.width = hw * dpr; hc.height = hh * dpr;
+  const ctx = hc.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, hw, hh);
+
+  const pad = { l: 36, r: 12, t: 16, b: 24 };
+  const pw = hw - pad.l - pad.r, ph = hh - pad.t - pad.b;
+
+  // build non-uniform grid: dense near 0, sparser toward 1
+  const pts = [];
+  let yMax = 1.2;
+  // fine grid near 0
+  for (let i = 1; i <= 100; i++) { const p = i * 0.001; pts.push({ p, d: 0 }); }
+  // medium grid 0.1–0.3
+  for (let i = 1; i <= 40; i++) { const p = 0.1 + i * 0.005; pts.push({ p, d: 0 }); }
+  // coarser grid 0.3–1.0
+  for (let i = 1; i <= 70; i++) { const p = 0.3 + i * 0.01; pts.push({ p, d: 0 }); }
+  pts.sort((a, b) => a.p - b.p);
+
+  for (const pt of pts) {
+    pt.d = pvalDensity(pt.p, df, delta);
+    if (pt.d > yMax && pt.d < 1e6) yMax = pt.d;
+  }
+  yMax *= 1.1;
+
+  const mapX = p => pad.l + p * pw;
+  const mapY = d => pad.t + ph - Math.min(d / yMax, 1) * ph;
+
+  // shade area under curve for p < 0.05
+  ctx.fillStyle = 'rgba(204, 0, 0, 0.15)';
+  ctx.beginPath();
+  ctx.moveTo(mapX(0), mapY(0));
+  for (const pt of pts) { if (pt.p <= 0.05) ctx.lineTo(mapX(pt.p), mapY(pt.d)); }
+  ctx.lineTo(mapX(0.05), mapY(0));
+  ctx.closePath(); ctx.fill();
+
+  // draw density curve
+  ctx.strokeStyle = '#4a8'; ctx.lineWidth = 2;
+  ctx.beginPath();
+  pts.forEach((pt, i) => { ctx[i === 0 ? 'moveTo' : 'lineTo'](mapX(pt.p), mapY(pt.d)); });
+  ctx.stroke();
+
+  // Unif(0,1) reference line at y=1
+  if (yMax > 1) {
+    ctx.strokeStyle = '#999'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(pad.l, mapY(1)); ctx.lineTo(pad.l + pw, mapY(1)); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#999'; ctx.font = '10px Menlo, monospace'; ctx.textAlign = 'right';
+    ctx.fillText('1 (Unif)', pad.l + pw, mapY(1) - 4);
+  }
+
+  // 0.05 vertical line
+  ctx.strokeStyle = '#c00'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.moveTo(mapX(0.05), pad.t); ctx.lineTo(mapX(0.05), pad.t + ph); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // x-axis
+  ctx.strokeStyle = '#999'; ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(pad.l, mapY(0)); ctx.lineTo(pad.l + pw, mapY(0)); ctx.stroke();
+
+  // axis labels
+  ctx.fillStyle = '#999'; ctx.font = '10px Menlo, monospace'; ctx.textAlign = 'center';
+  ctx.fillText('0', pad.l, hh - 6);
+  ctx.fillText('0.05', mapX(0.05), hh - 6);
+  ctx.fillText('0.5', mapX(0.5), hh - 6);
+  ctx.fillText('1', pad.l + pw, hh - 6);
+
+  // y-axis
+  ctx.textAlign = 'right';
+  ctx.fillText(yMax.toFixed(1), pad.l - 4, pad.t + 10);
+  ctx.fillText('0', pad.l - 4, pad.t + ph + 4);
+
+  // power / type I annotation
+  if (!truthHidden) {
+    ctx.fillStyle = '#c00'; ctx.font = '11px Menlo, monospace'; ctx.textAlign = 'left';
+    ctx.fillText(same ? 'P(p < 0.05) = ' + (rejProb * 100).toFixed(1) + '% (Type I)' :
+      'P(p < 0.05) = ' + (rejProb * 100).toFixed(1) + '% (Power)', pad.l, pad.t - 2);
+  }
+}
+
+// --- draw ---
+$('drawBtn').onclick = () => {
+  const mu1 = +$('m1').value, mu2 = +$('m2').value;
+  const sig1 = +$('s1').value, sig2 = +$('s2').value;
+  const n = +$('nn').value;
+  const x1 = Array.from({ length: n }, () => rnorm(mu1, sig1));
+  const x2 = Array.from({ length: n }, () => rnorm(mu2, sig2));
+  const res = pooledT(x1, x2);
+  drawBoxPlot(x1, x2);
+  const d = (res.m1 - res.m2) / res.sp;
+  $('formulaD').innerHTML =
+    'd = <span class="frac"><span class="frac-num">x&#772;₁ − x&#772;₂</span>' +
+    '<span class="frac-den">s<sub>p</sub></span></span>' +
+    ' = <span class="frac"><span class="frac-num">' + res.m1.toFixed(3) + ' − ' + res.m2.toFixed(3) + '</span>' +
+    '<span class="frac-den">' + res.sp.toFixed(3) + '</span></span>' +
+    ' = <span class="frac"><span class="frac-num">' + (res.m1 - res.m2).toFixed(3) + '</span>' +
+    '<span class="frac-den">' + res.sp.toFixed(3) + '</span></span>' +
+    ' = ' + d.toFixed(3);
+  $('formulaT').innerHTML =
+    't = <span class="frac"><span class="frac-num">d</span>' +
+    '<span class="frac-den">√(2/n)</span></span>' +
+    ' = <span class="frac"><span class="frac-num">' + d.toFixed(3) + '</span>' +
+    '<span class="frac-den">√(2/' + res.n1 + ')</span></span>' +
+    ' = ' + res.t.toFixed(3);
+  drawNullDist(res.t, res.df);
+  const sigClass = res.p < 0.05 ? ' sig' : '';
+  $('resultP').innerHTML = '<span class="pval' + sigClass + '">p = ' + res.p.toFixed(4) + '</span>';
+  $('resultP').style.display = 'none';
+  $('showPBtn').style.display = 'inline-block';
+  $('showPBtn').onclick = () => { $('resultP').style.display = 'block'; $('showPBtn').style.display = 'none'; };
+  pvals.push(res.p);
+  drawHistory();
+};
+
+$('clearBtn').onclick = () => {
+  pvals = [];
+  drawHistory();
+  $('formulaD').innerHTML = '';
+  $('formulaT').innerHTML = '';
+  $('nullCanvas').style.display = 'none';
+  $('resultP').innerHTML = ''; $('resultP').style.display = 'none';
+  $('showPBtn').style.display = 'none';
+  const cv = $('boxCanvas'); const bctx = cv.getContext('2d'); bctx.clearRect(0, 0, cv.width, cv.height);
+};
+
+// init
+drawHistory();
+drawTheoretical();
+</script>
+</body>
+</html>
